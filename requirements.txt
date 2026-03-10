@@ -7,10 +7,12 @@ langgraph==0.2.56
 langchain-core==0.3.49
 langchain-groq==0.2.5
 chromadb>=1.5.4,<2.0.0
-sentence-transformers==5.2.3
+# Optional for semantic retrieval; if missing, app falls back to lexical retrieval
+# sentence-transformers==5.2.3
 numpy==2.1.1
 
 tavily-python==0.3.2
+beautifulsoup4==4.12.3
 
 streamlit==1.50.0
 requests==2.32.3
