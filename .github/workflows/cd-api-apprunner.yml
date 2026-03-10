@@ -1,0 +1,114 @@
+name: CD API App Runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "main.py"
+      - "requirements.txt"
+      - "Dockerfile"
+      - ".github/workflows/cd-api-apprunner.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_API_REPOSITORY || 'startup-agent-api' }}
+  APP_RUNNER_SERVICE_NAME: ${{ vars.APP_RUNNER_API_SERVICE_NAME || 'startup-agent-api' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -f Dockerfile -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update App Runner API service
+        env:
+          IMAGE_URI: ${{ steps.build-image.outputs.image_uri }}
+          ACCESS_ROLE_ARN: ${{ secrets.APP_RUNNER_ECR_ACCESS_ROLE_ARN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$ACCESS_ROLE_ARN" ]; then
+            echo "Missing required secret: APP_RUNNER_ECR_ACCESS_ROLE_ARN"
+            exit 1
+          fi
+
+          RUNTIME_ENV=$(jq -n \
+            --arg groq "$GROQ_API_KEY" \
+            --arg tavily "$TAVILY_API_KEY" \
+            --arg langsmith "$LANGSMITH_API_KEY" \
+            --arg model "llama-3.1-8b-instant" \
+            --arg tracing "true" \
+            --arg project "startup-research-agent" \
+            --arg reranker "false" \
+            '{
+              GROQ_API_KEY: $groq,
+              TAVILY_API_KEY: $tavily,
+              LANGSMITH_API_KEY: $langsmith,
+              GROQ_MODEL: $model,
+              LANGCHAIN_TRACING_V2: $tracing,
+              LANGSMITH_PROJECT: $project,
+              RAG_ENABLE_RERANKER: $reranker
+            }')
+
+          SOURCE_CONFIG=$(jq -n \
+            --arg image "$IMAGE_URI" \
+            --arg access "$ACCESS_ROLE_ARN" \
+            --argjson env "$RUNTIME_ENV" \
+            '{
+              AutoDeploymentsEnabled: true,
+              AuthenticationConfiguration: { AccessRoleArn: $access },
+              ImageRepository: {
+                ImageIdentifier: $image,
+                ImageRepositoryType: "ECR",
+                ImageConfiguration: {
+                  Port: "8000",
+                  RuntimeEnvironmentVariables: $env
+                }
+              }
+            }')
+
+          SERVICE_ARN="$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='$APP_RUNNER_SERVICE_NAME']|[0].ServiceArn" \
+            --output text)"
+
+          if [ "$SERVICE_ARN" = "None" ] || [ -z "$SERVICE_ARN" ]; then
+            aws apprunner create-service \
+              --service-name "$APP_RUNNER_SERVICE_NAME" \
+              --source-configuration "$SOURCE_CONFIG" \
+              --instance-configuration '{"Cpu":"1 vCPU","Memory":"2 GB"}'
+          else
+            aws apprunner update-service \
+              --service-arn "$SERVICE_ARN" \
+              --source-configuration "$SOURCE_CONFIG"
+          fi

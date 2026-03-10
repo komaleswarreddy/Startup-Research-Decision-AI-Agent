@@ -20,6 +20,20 @@ Production-focused multi-agent startup intelligence platform with:
 5. Run UI:
    - `streamlit run ui/streamlit_app.py`
 
+## Docker (local production-like run)
+
+- Build and start both services:
+  - `docker compose up --build -d`
+- API: `http://127.0.0.1:8000/health`
+- UI: `http://127.0.0.1:8501`
+
+## CI/CD and AWS deployment
+
+- CI tests: `.github/workflows/ci.yml`
+- API CD to AWS App Runner: `.github/workflows/cd-api-apprunner.yml`
+- UI CD to AWS App Runner: `.github/workflows/cd-ui-apprunner.yml`
+- Full beginner guide: `DEPLOY_AWS_APP_RUNNER.md`
+
 ## Main endpoint
 
 - `POST /query`

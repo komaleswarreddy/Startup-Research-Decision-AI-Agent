@@ -1,7 +1,8 @@
-version: "3.9"
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: startup-agent-api
     env_file:
       - .env
@@ -11,17 +12,13 @@ services:
       - ./:/app
 
   ui:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
     container_name: startup-agent-ui
-    working_dir: /app
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             streamlit run ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0"
-    env_file:
-      - .env
+    environment:
+      - API_BASE_URL=http://api:8000
     ports:
       - "8501:8501"
-    volumes:
-      - ./:/app
     depends_on:
       - api

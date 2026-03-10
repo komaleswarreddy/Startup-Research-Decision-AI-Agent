@@ -1,0 +1,100 @@
+name: CD UI App Runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "requirements-ui.txt"
+      - "Dockerfile.ui"
+      - ".github/workflows/cd-ui-apprunner.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_UI_REPOSITORY || 'startup-agent-ui' }}
+  APP_RUNNER_SERVICE_NAME: ${{ vars.APP_RUNNER_UI_SERVICE_NAME || 'startup-agent-ui' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push UI image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -f Dockerfile.ui -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update App Runner UI service
+        env:
+          IMAGE_URI: ${{ steps.build-image.outputs.image_uri }}
+          ACCESS_ROLE_ARN: ${{ secrets.APP_RUNNER_ECR_ACCESS_ROLE_ARN }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$ACCESS_ROLE_ARN" ]; then
+            echo "Missing required secret: APP_RUNNER_ECR_ACCESS_ROLE_ARN"
+            exit 1
+          fi
+
+          if [ -z "$API_BASE_URL" ]; then
+            echo "Missing required secret: API_BASE_URL"
+            exit 1
+          fi
+
+          RUNTIME_ENV=$(jq -n --arg api "$API_BASE_URL" '{API_BASE_URL: $api}')
+
+          SOURCE_CONFIG=$(jq -n \
+            --arg image "$IMAGE_URI" \
+            --arg access "$ACCESS_ROLE_ARN" \
+            --argjson env "$RUNTIME_ENV" \
+            '{
+              AutoDeploymentsEnabled: true,
+              AuthenticationConfiguration: { AccessRoleArn: $access },
+              ImageRepository: {
+                ImageIdentifier: $image,
+                ImageRepositoryType: "ECR",
+                ImageConfiguration: {
+                  Port: "8501",
+                  RuntimeEnvironmentVariables: $env
+                }
+              }
+            }')
+
+          SERVICE_ARN="$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='$APP_RUNNER_SERVICE_NAME']|[0].ServiceArn" \
+            --output text)"
+
+          if [ "$SERVICE_ARN" = "None" ] || [ -z "$SERVICE_ARN" ]; then
+            aws apprunner create-service \
+              --service-name "$APP_RUNNER_SERVICE_NAME" \
+              --source-configuration "$SOURCE_CONFIG" \
+              --instance-configuration '{"Cpu":"1 vCPU","Memory":"2 GB"}'
+          else
+            aws apprunner update-service \
+              --service-arn "$SERVICE_ARN" \
+              --source-configuration "$SOURCE_CONFIG"
+          fi
