@@ -1,9 +1,17 @@
 import os
 import re
+import sys
+from pathlib import Path
 from uuid import uuid4
 
 import requests
 import streamlit as st
+
+# Ensure repo root is importable when Streamlit runs from ui/ entrypoint.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from app.agents.graph import AgentGraphService
 from app.agents.intent_router import IntentResult, IntentRouter
 
