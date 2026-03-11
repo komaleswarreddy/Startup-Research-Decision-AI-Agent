@@ -69,6 +69,7 @@ The Streamlit app supports direct mode, so you can run agent workflows without a
    - Repository: this repo
    - Branch: `main`
    - Main file path: `ui/streamlit_app.py`
+   - Python runtime: uses `runtime.txt` (`python-3.11`)
 4. In Streamlit app settings -> Secrets, add:
 
 ```toml
@@ -84,6 +85,7 @@ LANGCHAIN_TRACING_V2="false"
 Notes:
 - No separate backend URL is needed in direct mode.
 - Free tiers can be slow on first request.
+- If Streamlit asks for dependencies file path, set it to `ui/requirements.txt`.
 
 ## Main endpoint
 
