@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: startup-research-api
+    runtime: python
+    plan: starter
+    autoDeploy: true
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: RAG_ENABLE_RERANKER
+        value: "false"
+      - key: LANGCHAIN_TRACING_V2
+        value: "false"
+      - key: MEMORY_BACKEND
+        value: inmemory
+      - key: CHECKPOINT_BACKEND
+        value: memory

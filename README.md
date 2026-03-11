@@ -14,7 +14,7 @@ Production-focused multi-agent startup intelligence platform with:
 1. Create and activate virtualenv.
 2. Install dependencies:
    - `pip install -r requirements.txt`
-3. Copy `.env.example` to `.env` and fill secrets.
+3. Copy `env.example` to `.env` and fill secrets.
 4. Run API:
    - `uvicorn main:app --reload --port 8000`
 5. Run UI:
@@ -33,6 +33,31 @@ Production-focused multi-agent startup intelligence platform with:
 - API CD to AWS App Runner: `.github/workflows/cd-api-apprunner.yml`
 - UI CD to AWS App Runner: `.github/workflows/cd-ui-apprunner.yml`
 - Full beginner guide: `DEPLOY_AWS_APP_RUNNER.md`
+
+## Fast fallback deploy (Render API + Streamlit UI)
+
+Use this when AWS is unavailable:
+
+1. Deploy API on Render
+   - Push repo to GitHub
+   - In Render, create Blueprint from repo (uses `render.yaml`)
+   - Set required env vars in Render:
+     - `GROQ_API_KEY`
+     - `TAVILY_API_KEY`
+   - Wait for deploy, then verify:
+     - `https://<your-render-service>.onrender.com/health`
+     - `https://<your-render-service>.onrender.com/health/rag`
+
+2. Deploy UI on Streamlit Community Cloud
+   - New app from same GitHub repo
+   - Main file path: `ui/streamlit_app.py`
+   - In app settings -> Secrets, set:
+     - `API_BASE_URL="https://<your-render-service>.onrender.com"`
+   - Deploy and test with a startup query
+
+3. Notes
+   - First request can be slow due to cold start.
+   - Keep `RAG_ENABLE_RERANKER=false` for faster startup on low-cost plans.
 
 ## Main endpoint
 
