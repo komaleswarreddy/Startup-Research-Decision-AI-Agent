@@ -59,6 +59,32 @@ Use this when AWS is unavailable:
    - First request can be slow due to cold start.
    - Keep `RAG_ENABLE_RERANKER=false` for faster startup on low-cost plans.
 
+## 100% free deploy (Streamlit only, no AWS/Render)
+
+The Streamlit app supports direct mode, so you can run agent workflows without a separate FastAPI host.
+
+1. Push latest repo to GitHub.
+2. Open Streamlit Community Cloud and create a new app.
+3. Select:
+   - Repository: this repo
+   - Branch: `main`
+   - Main file path: `ui/streamlit_app.py`
+4. In Streamlit app settings -> Secrets, add:
+
+```toml
+GROQ_API_KEY="your_groq_key"
+TAVILY_API_KEY="your_tavily_key"
+STREAMLIT_DIRECT_MODE="true"
+RAG_ENABLE_RERANKER="false"
+LANGCHAIN_TRACING_V2="false"
+```
+
+5. Deploy app and run a test query from UI.
+
+Notes:
+- No separate backend URL is needed in direct mode.
+- Free tiers can be slow on first request.
+
 ## Main endpoint
 
 - `POST /query`
